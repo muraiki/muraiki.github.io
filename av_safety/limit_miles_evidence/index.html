@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>The Limits of Miles Driven as AV Safety Evidence</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jstat@1.9.6/dist/jstat.min.js"></script>
+</head>
+<body>
+
+<div class="article-container">
+
+  <h1>The Limits of Miles Driven as AV Safety Evidence</h1>
+  <p class="subtitle">
+    Explored through interactive Bayesian models
+  </p>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h2>Introduction</h2>
+
+  <p>
+    Answering the question of whether an autonomous vehicle is safe to deploy is challenging and full of consequential nuance. The measurement of how many miles have been driven without an incident is a natural starting point, but such evidence comprises a weaker safety argument than one might expect. Crucially, without careful formulation, even apparently transparent mileage statistics risk misleading the public. This article uses interactive models to introduce the reader to challenges with using miles driven as a core safety argument, especially when the miles span different releases and localities. By the end of this article you will be able to identify problems with such safety evidence in real-world situations, and you will know what questions to ask of AV companies.
+  </p>
+
+  <aside class="author-note">
+    <p>
+      <em>About the author, Erik Ferguson:</em><br />I worked on autonomous vehicles at <a href="https://aurora.tech">Aurora</a> for three years as a data scientist on two separate teams: Online Map (primarily construction zones) and Autonomy Long Tail (rare events like people directing traffic, emergency vehicles, and school buses). My analysis drove autonomy development, test creation, and requirements definition, enabling the verification and validation of critical capabilities necessary for the commercial launch of their self-driving truck. Please note that everything in this article is my own opinion, does not represent the views of my current employer (Covestro), and does not reflect specifically on Aurora: I am describing challenges that every AV company must tackle. I have no direct financial interest in any AV company. Perhaps an investment in my managed portfolio has some incidental exposure to the AV space, but I have not intentionally pursued any investment in the AV space.
+    </p>
+  </aside>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h2>1. Safety Cases and AV Failure Modes</h2>
+
+  <p>
+    Most if not all AV companies operating on public roads utilize a <em>safety case</em> of structured arguments to support that their vehicles are acceptably safe within an operational design domain. <em>Acceptably safe</em> means that while some risk remains, that risk is deemed to be offset by the benefits. As a rough comparison, consider that laws around driving ages are calibrated to balance the risk of inexperience at younger ages vs the need to cultivate driving experience, with the aim of enabling the benefits of mobility. In AV parlance, the <em>operational design domain</em> (ODD) explains what is in-scope for unsupervised autonomy, such as <em>highways with light rain</em> being acceptable. The ODD is necessarily a subset of the <em>operational domain</em>, which encompasses the full range of possible conditions that could occur within it, such as out-of-scope heavy rain.
+  </p>
+
+  <p>
+    For conventional vehicles, safety cases are built on well-characterized failure modes, such as the average time before a physical component might wear out. For autonomous vehicles, there are at least two important differences:
+  </p>
+  
+  <ol>
+    <li>Substantial portions of AV operation are defined by software, with the consequence that the system under test changes with every software release. This could be quite frequent, especially if regressions in performance are discovered on the road.</li>
+    <li>Core safety-critical components are comprised of learned models, such as neural networks that detect pedestrians or road lines, and these systems have failure modes that differ substantially from physical systems, such as misinterpreting a sign due to sun glare or construction dust.</li>
+  </ol>
+
+  <p>
+    The first difference directly impacts the strength of evidence from miles driven. Future articles in this series will explore implications of the second difference. Now to understand why miles driven provide weaker evidence than expected, we first need a framework for reasoning about uncertainty in rate estimates.
+  </p>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h2>2. Bayesian Rate Modeling</h2>
+
+  <p>
+  Bayesian modeling provides a way to estimate a value and the uncertainty around it as ever greater amounts of data are collected. The foundations of a Bayesian model are the model type and the prior: these are combined with data to yield a <em>posterior distribution</em>. This distribution describes what values are more credible given the combination of model, prior, and data. For instance, you might assume a coin you are about to flip is unbiased, which expresses your prior belief before seeing any evidence (data, meaning actually flipping the coin). You express this prior as a range of rates, which for this example we could express roughly as "the coin will land on heads 49%-51% of the time". If you flipped the coin and kept getting heads over and over, you would have increasing evidence that your prior was incorrect and that the coin is biased to land on heads. Bayesian modeling provides the math for calculating where the range of values ends up after these observations, such as becoming "the coin will land on heads 90%-99% of the time".
+  </p>
+
+  <p>
+    Consider modeling the rate of an event, such as car accidents. The animation below walks through the core mechanics using a Gamma-Poisson model, which is the standard Bayesian approach for estimating event rates from count data. The prior distribution encodes our initial belief, while observed data transforms it into a posterior distribution that reflects both the prior and the evidence. Using the below widghet, watch how the distribution changes its shape and center as observations accumulate, via the animations shown as you click through the steps.
+  </p>
+
+  <div class="widget-container" id="bayes-intro">
+    <h3>Bayesian Inference in Action</h3>
+  </div>
+
+  <p>
+    As shown in the last step of the widget, a distribution over credible rates is strictly more informative than a single estimate of the average rate. Two analyses can agree on the average rate while disagreeing dramatically on how certain that average is, and this difference matters in measuring the performance of safety-critical systems. In the next section, we will apply this framework to make a comparison between AV and human vehicle fatality rates.
+  </p>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h2>3. Miles Driven</h2>
+
+  <p>
+    An initial safety argument might focus on the number of miles driven without an incident, comparing it to human rates. This is challenging for rare events, because observing nothing happening, over and over, moves the needle slowly. To formulate this argument we require a model that can estimate from a limited sample while conveying the uncertainty given the sample size.
+  </p>
+
+  <p>
+    Before proceeding with modeling, it is important to note a serious challenge: there is no straightforward human metric to compare to, since rates of fatalities per miles driven vary by geographic location and by driver type. For January through September 2025, NHTSA estimated this as <a href="https://www.nhtsa.gov/press-releases/nhtsa-reports-sharp-drop-traffic-fatalities-first-half-2025" target="_blank" rel="noopener">1.06 deaths per 100 million miles</a>. Critically, this is an optimistic rate for comparing AVs: the AV's ODD is necessarily much more limited than the entire US, and the types of drivers in the NHTSA statistic include impaired ones (alcohol, fatigue, distraction). As an AV should be expected to perform at least as well as an <em>unimpaired driver operating under the same ODD limitations</em>, the shown human metric is too high, making the AV performance difference appear to be better than it truly is.
+  </p>
+
+  <p>
+    The widget below frames this as a Bayesian estimation problem.<sup><a href="#fn1" id="fnref1">1</a></sup> Rather than asking "how many miles are enough," we model a probability distribution over the AV's true incident rate, updated as incident-free miles accumulate. This distribution conveys that some incident rates are more plausible than others. The model type is the same one used in the introduction. Also, you can select from an optimistic or skeptical prior, and through interacting with it by increasing the miles driven, you can see how the strength of the prior is gradually overridden as miles accumulate.
+  </p>
+
+  <div class="widget-container" id="widget-1">
+    <h3>Statistical Demonstration Calculator</h3>
+  </div>
+
+  <p>
+    Note that the default fleet pace of 208 million miles per year is based on a recent achievement of Waymo in March 2026 <a href="https://waymo.com/blog/shorts/waymo-safety-impact-update-170m/" target="_blank" rel="noopener">of 4 million rider-only miles per week across a few different ODDs</a>. Waymo is operating at a much larger scale than most AV companies both in terms of miles per week and of cumulative miles driven across all software releases. Compare this to Aurora, <a href="https://ir.aurora.tech/news-events/press-releases/detail/132/aurora-triples-driverless-network-to-10-routes-and-prepares-to-expand-across-u-s-sun-belt" target="_blank" rel="noopener">which had 250,000 driverless miles at the end of January, 2026</a>.
+  </p>
+
+  <p>
+    Even at Waymo's incredible scale and with an optimistic prior, at 99.9% credibility it will still take about 580 million cumulative fatality-free miles to assert that performance is better than the human rate, as gauged by the 99.9% credible interval falling entirely below the optimistic human fatality rate. As to what credible level is sufficient, that is admittedly an unanswered question. However, it is one that the public should have a voice in, just as driving laws are informed by the public.
+  </p>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h2>4. The Stationarity Problem</h2>
+
+  <p>
+    There is a deeper problem with using miles as evidence: the system being measured today is not the system that was driving months ago or even weeks ago. Autonomous vehicle software is updated continuously: each release potentially changes things like models that detect pedestrians, systems that select from candidate driving paths, or the vehicle hardware itself. Miles accumulated under earlier version 3.1 do not provide <em>direct</em> evidence about the safety of later version 4.2.
+  </p>
+
+  <p>
+  The model used so far has a <em>stationarity assumption</em>, which means that the incident rate does not vary, but that assumption is necessarily violated in any actively developed AV system. When a company reports "X million miles with Y incident rate," they are describing a <em>population of system versions</em> across a trajectory of development, not a single system. This aggregate number describes a set of releases with heterogeneous performance, some better and some worse than the headline figure. If a performance regression exists, pooling information across releases dilutes that regression with miles from other releases, making a less safe release look acceptable.
+  </p>
+
+  <p>
+    The problem compounds when you add geographic variation. Miles driven in Phoenix (flat, dry, grid-layout streets, sparse pedestrian traffic) are not exchangeable with miles driven in Pittsburgh (hills, snow, curvy roads, <a href="https://maps.app.goo.gl/cYQf9NcWZNhahbB18" target="_blank" rel="noopener">short multi-lane changes while on bridges</a>). An aggregate incident rate across multiple operational design domains is a weighted average of fundamentally different risk profiles. Furthermore, there are time-varying sources that can affect the incident rate, such as the varying frequencies with which construction is encountered along with the different levels of difficulty of particular construction sites. A regression in a new version's handling of construction zones may only manifest in Pittsburgh, making it invisible in Phoenix-dominated aggregate mileage.
+  </p>
+
+  <p>
+    The widget below simulates a fleet accumulating miles across multiple software releases and ODDs. It starts with only the aggregate view, which is the smooth line that would appear in a safety report. Click to reveal each release's actual rate, one at a time. As each release is revealed, the lower chart shows its posterior distribution, which is the estimate of that release's true incident rate given its data. Observe what the headline number was averaging over as miles from different releases are combined together.
+  </p>
+
+  <div class="widget-container" id="widget-2">
+    <h3>Non-Stationarity Demonstrator</h3>
+  </div>
+
+  <p>
+    The aggregate line, where miles are combined across releases, looks smooth and gently improving. However, as you reveal each release, you can see releases with meaningfully different incident rates, including regressions that are invisible in the aggregate. As such, metrics that aggregate miles across releases do not accurately represent how a product's safety has evolved, nor do they reliably indicate the performance of the current release.
+  </p>
+
+  <p>
+    The lower chart in the widget makes the case visually.<sup><a href="#fn2" id="fnref2">2</a></sup> Each release gets its own posterior density using the same Gamma-Poisson model type used in the previous sections. If all releases truly shared one incident rate, their posteriors would substantially overlap and you would see a cluster of similar curves. Instead, as you reveal more releases, the posteriors spread apart: some are clearly separated, with non-overlapping 90% credible intervals (and higher credible levels would increase the separation). The dashed gray curve shows the pooled posterior, which is what you would conclude if you assumed that releases have similar rates, or stationarity. It sits between the per-release estimates and represents the average across versions, which is a quantity that describes no system currently on the road.
+  </p>
+
+  <p>
+  To be clear, the problem demonstrated here is the aggregation of miles driven across releases <em>that include performance regressions</em>. We of course want to see improving performance validated by successive releases, which would necessarily be evidence against stationarity as well. The key distinction is that this example shows <em>undesirable</em> non-stationarity: regressions in the current release are hidden behind miles from past releases with better performance.
+  </p>
+
+  <p>
+    More sophisticated approaches exist that would provide an appropriately nuanced picture of how rates evolve across releases.<sup><a href="#fn3" id="fnref3">3</a></sup> But the point here is that even visual inspection of per-release posteriors demonstrates how regressions can be hidden. If this straightforward comparison catches the problem, then reporting a pooled aggregate without accounting for release heterogeneity is hard to defend.
+  </p>
+
+  <p>
+    In sum, there are two intertwined problems with safety arguments that rely on miles driven: the sheer volume of miles needed to bound a rare-event rate along with the risk of obscuring performance regressions by pooling miles across releases and ODDs. A miles-driven safety argument must address both challenges simultaneously.
+  </p>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <h2>5. Public Implications</h2>
+
+  <p>
+    This article demonstrated the limitations of safety arguments which rely on miles driven and which pool evidence across software releases and operational design domains. As a concrete example of a miles driven argument being used to justify continuing autonomous operation in the presence of repeated safety violations across multiple releases, see <a href="https://philkoopman.substack.com/p/the-waymo-school-bus-problem" target="_blank" rel="noopener">this analysis of Waymo's school bus problem</a> by safety expert Phil Koopman.
+  </p>
+
+  <p>
+    As such, when members of the public are presented with safety evidence rooted in arguments from miles driven, the following questions must be answered:
+
+    <ul>
+      <li>Which release does this describe? If multiple releases are included, how does the safety evidence vary across releases?</li>
+      <li>If other operational design domains that do not match my community are included in this metric, do those ODDs include the challenges present in my community? How is evidence pooled together?</li>
+      <li>How uncertain is this safety metric? What justifies deeming this level of uncertainty acceptably safe?</li>
+    </ul>
+  </p>
+
+  <p>These are not unreasonable demands: they are the minimum standard for <em>informed public consent</em> for autonomous systems to share roads with humans. Not all AV companies rely on miles driven as their primary safety evidence, but for those that do, the standard for transparency starts here: release-specific, ODD-specific, uncertainty-quantified reporting. Future articles in this series will explore additional challenges, such as how machine learning models fail in ways that miles alone cannot characterize.</p>
+
+  <!-- ════════════════════════════════════════════════════════════════ -->
+  <hr>
+  <section class="footnotes">
+    <h3>Notes</h3>
+    <ol>
+      <li id="fn1">
+        <p>
+          Widget 1 uses a Gamma-Poisson conjugate model, which is the standard Bayesian approach for modeling an unknown event rate from count data. The AV fatality rate &lambda; is given a Gamma(&alpha;, &beta;) prior; after observing zero fatalities in <em>N</em> miles, the posterior is Gamma(&alpha;, &beta; + <em>N</em>). The widget plots this full posterior density and its credible interval, so the reader can see the distribution change as miles accumulate.
+        </p>
+        <p>
+          <a href="#fnref1">&uarr;</a>
+        </p>
+      </li>
+      <li id="fn2">
+        <p>
+          Each release's incident rate &lambda;<sub>i</sub> is given a Gamma(&alpha;<sub>0</sub>,&nbsp;&beta;<sub>0</sub>) prior with &alpha;<sub>0</sub>&nbsp;=&nbsp;1, &beta;<sub>0</sub>&nbsp;=&nbsp;2 (weakly informative). After observing K<sub>i</sub> incidents in E<sub>i</sub> exposure (100k-mile units), the posterior is Gamma(&alpha;<sub>0</sub>&nbsp;+&nbsp;K<sub>i</sub>,&nbsp;&beta;<sub>0</sub>&nbsp;+&nbsp;E<sub>i</sub>). The "pooled posterior" treats all releases as one dataset: Gamma(&alpha;<sub>0</sub>&nbsp;+&nbsp;&Sigma;K<sub>i</sub>,&nbsp;&beta;<sub>0</sub>&nbsp;+&nbsp;&Sigma;E<sub>i</sub>). Stationarity is assessed by checking whether per-release 90% credible intervals overlap: non-overlapping intervals mean the releases have rates that are inconsistent with a single shared value at that credible level.
+        </p>
+        <p>
+          <a href="#fnref2">&uarr;</a>
+        </p>
+      </li>
+      <li id="fn3">
+        <p>
+          A hierarchical (partial-pooling) model would actually <em>strengthen</em> the argument made here.
+          Instead of the binary "one rate or many?" question, a hierarchical model estimates the
+          between-release variance &sigma;<sup>2</sup> directly: each release rate &lambda;<sub>i</sub>
+          is drawn from a shared hyper-distribution whose spread is learned from the data. This
+          quantifies <em>how much</em> rates vary across releases, not merely <em>whether</em> they vary.
+          The resulting shrinkage estimates (pulling extreme releases toward the group mean) are
+          more realistic than either the fully pooled aggregate or the raw per-release rates.
+          But that quantified between-release variance is precisely what the naive aggregate discards.
+          A hierarchical analysis would therefore produce a concrete estimate of the information lost
+          by pooling, making the case against aggregate-only reporting even harder to dismiss.
+        </p>
+        <p>
+          <a href="#fnref3">&uarr;</a>
+        </p>
+      </li>
+    </ol>
+  </section>
+
+  <details class="ai-disclosure">
+    <summary>AI use disclosure</summary>
+    <p>
+      AI (Claude) was used to help draft some but not all paragraphs, to review the article text, and to write the code for the interactive widgets. All text was either written by or reviewed and edited by the author. All code was reviewed by the author: I am confident in reviewing the statistical code and less confident in reviewing graphical code (D3.js bindings and SVG layout).
+    </p>
+  </details>
+
+</div><!-- .article-container -->
+
+<!-- Scripts: shared.js must load before widgets -->
+<script src="js/shared.js"></script>
+<script src="js/animation-bayes-intro.js"></script>
+<script src="js/widget1-sample-size.js"></script>
+<script src="js/widget2-nonstationarity.js"></script>
+
+</body>
+</html>
